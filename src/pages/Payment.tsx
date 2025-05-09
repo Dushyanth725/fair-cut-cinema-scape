@@ -1,242 +1,167 @@
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
+// Interface for the booking data
+interface BookingDetails {
+  id: string;
+  showtimeId: string;
+  theater: string;
+  movie: string;
+  date: string;
+  time: string;
+  screen: string;
+  seats: { row: string; number: number }[];
+  totalAmount: number;
 }
 
 const Payment = () => {
+  const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  
-  const bookingDetailsJson = localStorage.getItem("bookingDetails");
-  const bookingDetails = bookingDetailsJson ? JSON.parse(bookingDetailsJson) : null;
 
   useEffect(() => {
-    if (!bookingDetails) {
-      navigate('/');
-      return;
+    // Get booking details from localStorage
+    const storedBooking = localStorage.getItem('currentBooking');
+    if (storedBooking) {
+      setBookingDetails(JSON.parse(storedBooking));
+    } else {
+      toast.error("Booking details not found");
+      navigate("/theaters");
     }
+  }, [navigate]);
 
-    // Load Razorpay script
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    document.body.appendChild(script);
-
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, [bookingDetails, navigate]);
-
-  const handlePayment = () => {
+  const handlePayment = async (method: string) => {
     if (!bookingDetails) return;
-
+    
     setLoading(true);
-    
-    // Check if the theater has payment enabled (only Light House Cinemas for now)
-    if (bookingDetails.theater.name !== "Light House Cinemas") {
-      // For demo theaters, just show success and skip actual payment
-      saveBooking();
-      toast.success("Demo booking successful!");
-      navigate('/ticket');
-      return;
-    }
-    
-    // For Light House Cinemas, use Razorpay
-    const options = {
-      key: "rzp_test_1v4w1diaSwnTNf", // Test key from your requirements
-      amount: bookingDetails.totalAmount * 100, // Razorpay amount is in paise
-      currency: "INR",
-      name: "Fair-Cut",
-      description: `Tickets for ${bookingDetails.movie.title}`,
-      image: "/lovable-uploads/78315fe2-71e1-49f4-9fff-b76e2ded5b01.png",
-      handler: function(response: any) {
-        // Payment successful
-        saveBooking(response.razorpay_payment_id);
-        toast.success("Payment successful!");
-        navigate('/ticket');
-      },
-      prefill: {
-        name: "Fair-Cut Customer",
-      },
-      theme: {
-        color: "#7e22ce",
-      },
-    };
-    
     try {
-      const razorpay = new window.Razorpay(options);
-      razorpay.open();
-    } catch (error) {
-      console.error("Razorpay error:", error);
-      toast.error("Payment gateway error. Please try again.");
+      // For this demo, we'll just simulate a successful payment
+      // In a real app, you would integrate with Razorpay using the test key
+      
+      // Update booking status to paid
+      const { error } = await supabase
+        .from('bookings')
+        .update({ payment_status: 'paid' })
+        .eq('id', bookingDetails.id);
+      
+      if (error) throw error;
+      
+      toast.success(`Payment successful via ${method}!`);
+      navigate('/ticket');
+    } catch (error: any) {
+      toast.error(`Payment failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const saveBooking = async (paymentId?: string) => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      
-      if (!userData.user) {
-        throw new Error("User not authenticated");
-      }
-      
-      // Format seats data for database
-      const seatsData = bookingDetails.seats.map((seat: any) => ({
-        row: seat.row,
-        number: seat.number
-      }));
-      
-      const { error } = await supabase
-        .from('bookings')
-        .insert({
-          user_id: userData.user.id,
-          showtime_id: bookingDetails.showtime.id,
-          seats: seatsData,
-          total_amount: bookingDetails.totalAmount,
-          payment_status: paymentId ? 'completed' : 'pending'
-        });
-      
-      if (error) throw error;
-      
-    } catch (error) {
-      console.error("Error saving booking:", error);
-      // Continue anyway for demo purposes
-    }
-  };
-
-  // Calculate subtotal, convenience fee (0 for Fair-Cut), and total
-  const subtotal = bookingDetails?.totalAmount || 0;
-  const convenienceFee = 0; // This is the USP of Fair-Cut
-  const total = subtotal + convenienceFee;
+  if (!bookingDetails) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black bg-gradient-to-br from-black via-purple-950 to-violet-900">
+        <div className="text-white text-2xl">Loading booking details...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black bg-gradient-to-br from-black via-purple-950 to-violet-900 p-4">
-      <div className="max-w-md mx-auto pt-6">
-        <div className="flex justify-center mb-6">
+      <div className="max-w-md mx-auto pt-8">
+        <div className="flex justify-center mb-8">
           <img 
             src="/lovable-uploads/78315fe2-71e1-49f4-9fff-b76e2ded5b01.png" 
             alt="Fair-Cut Logo" 
-            className="w-32"
+            className="w-40 grayscale hover:grayscale-0 transition-all duration-300"
           />
         </div>
         
         <Card className="bg-black border border-violet-500 text-white mb-6">
           <CardHeader className="border-b border-violet-800">
             <CardTitle className="text-xl text-violet-400">
-              Payment Details
+              Complete Your Payment
             </CardTitle>
             <CardDescription className="text-violet-300">
-              Complete your payment to confirm booking
+              Light House Cinemas • Secure Payment
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4">
-            {bookingDetails ? (
-              <div className="space-y-4">
-                <div className="bg-violet-950 bg-opacity-50 rounded-md p-4">
-                  <h3 className="font-bold text-white mb-2">{bookingDetails.movie.title}</h3>
-                  <p className="text-sm text-violet-300">{bookingDetails.theater.name}</p>
-                  <p className="text-sm text-violet-300">
-                    Screen {bookingDetails.showtime.screen} • {bookingDetails.showtime.time}
-                  </p>
-                  <div className="mt-2">
-                    <span className="text-sm text-violet-300">Seats: </span>
-                    <span className="text-sm text-white">
-                      {bookingDetails.seats.map((seat: any) => `${seat.row}${seat.number}`).join(', ')}
-                    </span>
-                  </div>
+          <CardContent className="pt-6">
+            <div className="border border-violet-800 rounded-md p-4 mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">{bookingDetails.movie}</h3>
+              <div className="text-violet-300 space-y-1 text-sm">
+                <p>{bookingDetails.theater}</p>
+                <p>Date: {bookingDetails.date} • Time: {bookingDetails.time}</p>
+                <p>Screen: {bookingDetails.screen}</p>
+                <p>
+                  Seats: {bookingDetails.seats
+                    .sort((a, b) => a.row.localeCompare(b.row) || a.number - b.number)
+                    .map(seat => `${seat.row}${seat.number}`)
+                    .join(', ')}
+                </p>
+              </div>
+              <div className="border-t border-violet-800 mt-4 pt-4">
+                <div className="flex justify-between">
+                  <span className="text-violet-300">Ticket Price:</span>
+                  <span className="text-white">₹{bookingDetails.totalAmount}</span>
                 </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-violet-300">Subtotal</span>
-                    <span className="text-white">₹{subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-violet-300">Convenience Fee</span>
-                    <span className="text-green-500">₹{convenienceFee.toFixed(2)} <span className="text-xs">(FREE with Fair-Cut)</span></span>
-                  </div>
-                  <div className="flex justify-between border-t border-violet-800 pt-2 mt-2">
-                    <span className="text-white font-bold">Total Amount</span>
-                    <span className="text-white font-bold">₹{total.toFixed(2)}</span>
-                  </div>
+                <div className="flex justify-between text-green-400">
+                  <span>Convenience Fee:</span>
+                  <span>₹0</span>
                 </div>
-                
-                <div className="bg-violet-950 bg-opacity-50 rounded-md p-4 mt-4">
-                  <h4 className="font-semibold text-violet-300 mb-2">Payment Options</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center">
-                      <input 
-                        type="radio" 
-                        id="upi" 
-                        name="payment" 
-                        defaultChecked 
-                        className="text-violet-600 focus:ring-violet-500"
-                      />
-                      <label htmlFor="upi" className="ml-2 text-white">UPI Payment</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input 
-                        type="radio" 
-                        id="card" 
-                        name="payment" 
-                        className="text-violet-600 focus:ring-violet-500"
-                      />
-                      <label htmlFor="card" className="ml-2 text-white">Credit/Debit Card</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input 
-                        type="radio" 
-                        id="netbanking" 
-                        name="payment" 
-                        className="text-violet-600 focus:ring-violet-500"
-                      />
-                      <label htmlFor="netbanking" className="ml-2 text-white">Net Banking</label>
-                    </div>
-                  </div>
+                <div className="flex justify-between mt-2 text-lg font-bold">
+                  <span className="text-violet-300">Total Amount:</span>
+                  <span className="text-white">₹{bookingDetails.totalAmount}</span>
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-6">
-                <div className="text-violet-300">No booking details found</div>
-              </div>
-            )}
+            </div>
+            
+            <div className="space-y-4">
+              <h3 className="text-violet-300 font-medium">Select Payment Method</h3>
+              
+              <Button 
+                onClick={() => handlePayment('Credit/Debit Card')}
+                className="w-full bg-violet-800 hover:bg-violet-700 justify-start"
+                disabled={loading}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Credit/Debit Card
+              </Button>
+              
+              <Button 
+                onClick={() => handlePayment('UPI')}
+                className="w-full bg-violet-800 hover:bg-violet-700 justify-start"
+                disabled={loading}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                UPI Payment
+              </Button>
+              
+              <Button 
+                onClick={() => handlePayment('QR Code')}
+                className="w-full bg-violet-800 hover:bg-violet-700 justify-start"
+                disabled={loading}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+                QR Code Payment
+              </Button>
+            </div>
+            
+            <div className="mt-6 text-center text-xs text-violet-400">
+              <p>This is a test payment environment.</p>
+              <p>No actual payment will be processed.</p>
+              <p>Test Key ID: rzp_test_1v4w1diaSwnTNf</p>
+            </div>
           </CardContent>
         </Card>
-        
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            className="flex-1 border-violet-500 text-violet-300"
-            onClick={() => navigate(-1)}
-          >
-            Back
-          </Button>
-          
-          <Button 
-            className="flex-1 bg-violet-700 hover:bg-violet-600 text-white"
-            onClick={handlePayment}
-            disabled={loading || !bookingDetails}
-          >
-            {loading ? "Processing..." : `Pay ₹${total.toFixed(2)}`}
-          </Button>
-        </div>
-        
-        <div className="mt-4 text-center text-sm text-violet-400">
-          <span className="block">Test Card: 4111 1111 1111 1111</span>
-          <span className="block">Expiry: Any future date | CVV: Any 3 digits</span>
-          <span className="block">Name: Any name</span>
-        </div>
       </div>
     </div>
   );
