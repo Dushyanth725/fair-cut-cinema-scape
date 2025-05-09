@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { Json } from "@/integrations/supabase/types";
 
 // Define proper types for seat and booking data
 interface Seat {
@@ -15,14 +16,30 @@ interface Seat {
   isBooked: boolean;
 }
 
+interface BookingSeat {
+  row: string;
+  number: number;
+}
+
 interface Booking {
   id?: string;
-  seats: { row: string; number: number }[];
+  seats: BookingSeat[];
   showtime_id: string;
   total_amount: number;
   payment_status?: string;
   booking_date?: string;
   user_id?: string;
+}
+
+// Interface for raw booking data from Supabase
+interface RawBooking {
+  id: string;
+  seats: Json;
+  showtime_id: string;
+  total_amount: number;
+  payment_status: string | null;
+  booking_date: string;
+  user_id: string | null;
 }
 
 const SeatSelection = () => {
@@ -64,7 +81,35 @@ const SeatSelection = () => {
 
         if (bookingsError) throw bookingsError;
 
-        setExistingBookings(bookingsData || []);
+        // Process and convert the raw bookings data to match our Booking interface
+        const processedBookings: Booking[] = (bookingsData || []).map((rawBooking: RawBooking) => {
+          // Parse the seats JSON if it's a string, or use as is if it's already an array
+          let parsedSeats: BookingSeat[];
+          if (typeof rawBooking.seats === 'string') {
+            try {
+              parsedSeats = JSON.parse(rawBooking.seats);
+            } catch (e) {
+              console.error('Error parsing seats JSON:', e);
+              parsedSeats = [];
+            }
+          } else if (Array.isArray(rawBooking.seats)) {
+            parsedSeats = rawBooking.seats as unknown as BookingSeat[];
+          } else {
+            parsedSeats = [];
+          }
+
+          return {
+            id: rawBooking.id,
+            seats: parsedSeats,
+            showtime_id: rawBooking.showtime_id,
+            total_amount: rawBooking.total_amount,
+            payment_status: rawBooking.payment_status || undefined,
+            booking_date: rawBooking.booking_date,
+            user_id: rawBooking.user_id || undefined
+          };
+        });
+
+        setExistingBookings(processedBookings);
 
         // Initialize seats
         generateSeats();
@@ -104,8 +149,8 @@ const SeatSelection = () => {
 
   const checkIfSeatIsBooked = (row: string, number: number): boolean => {
     return existingBookings.some(booking => {
-      if (typeof booking.seats === 'object' && Array.isArray(booking.seats)) {
-        return booking.seats.some((seat: any) => 
+      if (Array.isArray(booking.seats)) {
+        return booking.seats.some((seat: BookingSeat) => 
           seat.row === row && seat.number === number
         );
       }
