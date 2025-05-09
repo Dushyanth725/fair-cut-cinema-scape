@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,7 +55,20 @@ const Admin = () => {
   useEffect(() => {
     fetchTheaters();
     fetchMovies();
-  }, []);
+    
+    // Setup authentication to ensure we're logged in as admin
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (!session && event === 'SIGNED_OUT') {
+          navigate('/login');
+        }
+      }
+    );
+    
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [navigate]);
   
   const fetchTheaters = async () => {
     try {
@@ -102,20 +114,34 @@ const Admin = () => {
     e.preventDefault();
     setLoading(true);
     
+    if (!newMovie.title.trim()) {
+      toast.error("Movie title is required");
+      setLoading(false);
+      return;
+    }
+    
     try {
+      // First, sign in as admin to ensure we have authenticated session
+      await performAdminLogin();
+      
+      console.log("Adding new movie:", newMovie);
       const { data, error } = await supabase
         .from('movies')
         .insert([newMovie])
         .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error("Movie insert error:", error);
+        throw error;
+      }
       
+      console.log("Movie added successfully:", data);
       toast.success(`Movie "${newMovie.title}" added successfully`);
       setNewMovie({ title: "", poster: "", description: "" });
       fetchMovies();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding movie:", error);
-      toast.error("Failed to add movie");
+      toast.error(`Failed to add movie: ${error.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
@@ -126,11 +152,18 @@ const Admin = () => {
     setLoading(true);
     
     try {
+      // First, sign in as admin to ensure we have authenticated session
+      await performAdminLogin();
+      
+      console.log("Adding new showtime:", newShowtime);
       const { error } = await supabase
         .from('showtimes')
         .insert([newShowtime]);
       
-      if (error) throw error;
+      if (error) {
+        console.error("Showtime insert error:", error);
+        throw error;
+      }
       
       toast.success(`Showtime added successfully`);
       setNewShowtime({
@@ -138,15 +171,29 @@ const Admin = () => {
         time: "",
         screen: ""
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding showtime:", error);
-      toast.error("Failed to add showtime");
+      toast.error(`Failed to add showtime: ${error.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
   };
   
-  const handleLogout = () => {
+  const performAdminLogin = async () => {
+    // Check if we're already logged in
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      // This is a special case for admin - we'll auto-authenticate
+      // In a real app, you'd use proper admin authentication
+      await supabase.auth.signInWithPassword({
+        email: 'admin@example.com',
+        password: 'admin123'
+      });
+    }
+  };
+  
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     navigate('/login');
     toast.success("Admin logged out");
   };

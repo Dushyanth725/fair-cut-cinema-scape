@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,16 +32,22 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
+      console.log("Signing in with:", email, password);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Login error:", error);
+        throw error;
+      }
       
+      console.log("Login successful:", data);
       toast.success("Login successful!");
       navigate('/location');
     } catch (error: any) {
+      console.error("Error in login process:", error);
       toast.error(error.message || "Error logging in");
     } finally {
       setLoading(false);
@@ -53,6 +58,11 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
+      if (!name.trim()) {
+        throw new Error("Please enter your name");
+      }
+      
+      console.log("Signing up with:", email, password, name);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -63,11 +73,16 @@ const Login = () => {
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Signup error:", error);
+        throw error;
+      }
       
+      console.log("Signup successful:", data);
       toast.success("Registration successful! Please log in.");
       setIsSignUp(false);
     } catch (error: any) {
+      console.error("Error in signup process:", error);
       toast.error(error.message || "Error signing up");
     } finally {
       setLoading(false);
